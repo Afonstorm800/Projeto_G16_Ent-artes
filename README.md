@@ -31,6 +31,8 @@ conforme documentado no Dossier de Organização do Grupo.
 | Brune Enes      | 25992           | Product Owner |
 | Erica Semedo    | 30623           | Programador   |
 | Diogo Bessa     | 25430           | Programador   |
+| Thifany Antoni  | 16077           | Programador   |
+
 
 ---
 
