@@ -1,0 +1,29 @@
+@startuml
+skinparam style strictuml
+title Processo Ent'Artes (Fluxo Humano)
+
+actor "Aluno/EE" as EE
+actor "Direção" as D
+actor "Professor" as P
+
+== Processo de Requisição ==
+EE -> D: Solicita Coaching (Prof, Estúdio, Horário)
+note right: Validação de disponibilidade automática
+D -> EE: Notifica Confirmação e Estúdio atribuído
+D -> P: Notifica novo Coaching agendado
+
+== Realização da Aula ==
+P -> EE: Leciona a aula (30-120 min)
+
+== Validação Pós-Coaching (Máx 48h) ==
+P -> D: Confirma conclusão da aula
+EE -> D: Confirma conclusão da aula
+
+alt Prazo > 48h sem confirmação
+    D -> D: Gera alerta de pendência interna
+end
+
+D -> D: Validação final para Faturação
+D -> EE: Disponibiliza registo para pagamento mensal
+
+@enduml
