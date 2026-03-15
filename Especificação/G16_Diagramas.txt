@@ -1,0 +1,983 @@
+Diagrama de casos de uso ===============================================================================
+
+@startuml
+left to right direction
+
+actor "Aluno/EE" as Enc
+actor "Professor" as Prof
+actor "Direçao" as Dir
+actor "Membro da Comunidade" as Mem
+
+rectangle "Sistema Ent'Artes" {
+
+  (Visualizar horários disponíveis) as UC1
+  (Pedir marcação de aula) as UC2
+  (Aprovar/Rejeitar pedido de aula) as UC3
+  (Confirmar conclusão da aula - EE) as UC4
+  (Confirmar conclusão da aula - Professor) as UC5
+  (Validar conclusão da sessão) as UC6
+
+  (Executar faturação mensal) as UC7
+  (Gerar Excel de faturação) as UC8
+
+  (Submeter item para inventário) as UC9
+  (Aprovar item do inventário) as UC10
+  (Visualizar inventário) as UC11
+
+  (Solicitar empréstimo de item) as UC12
+  (Aprovar/Rejeitar empréstimo) as UC13
+  (Devolver item) as UC14
+}
+
+Enc -- UC1
+Enc -- UC2
+Enc -- UC4
+Enc -- UC11
+Enc -- UC12
+Enc -- UC14
+
+Prof -- UC5
+
+Dir -- UC3
+Dir -- UC6
+Dir -- UC7
+Dir -- UC10
+Dir -- UC13
+
+Mem -- UC9
+Mem -- UC11
+Mem -- UC12
+
+UC7 --> UC8 : <<include>>
+
+@enduml
+______________________________________________________________________________________
+
+Diagramas de sequência =========================================================================================
+Confirmação (48h) -------------------------------------------------------------------------------------------
+
+@startuml
+actor "Aluno/EE" as Enc
+actor "Professor" as Prof
+actor "Direção" as Coord
+participant "Interface Web" as UI
+participant "API Backend" as API
+participant "Base de Dados" as DB
+
+== Confirmação do Encarregado ==
+Enc -> UI: Confirma conclusão da sessão
+UI -> API: POST /sessoes/{id}/confirmar-enc
+API -> DB: Atualiza enc_confirmado=true
+DB --> API: atualizado
+API -> DB: Verifica se prof_confirmado=true
+DB --> API: estado prof_confirmado
+alt ambos confirmaram
+    API -> DB: Atualiza estado='pronto_validar'
+    API -> Coord: "Notifica Direção"
+end
+API --> UI: OK
+UI --> Enc: Confirmação recebida
+
+== Confirmação do Professor ==
+Prof -> UI: Confirma conclusão da sessão
+UI -> API: POST /sessoes/{id}/confirmar-prof
+API -> DB: Atualiza prof_confirmado=true
+DB --> API: atualizado
+API -> DB: Verifica se enc_confirmado=true
+DB --> API: estado enc_confirmado
+alt ambos confirmaram
+    API -> DB: Atualiza estado='pronto_validar'
+    API -> Coord: "Notifica Direção"
+end
+API --> UI: OK
+UI --> Prof: Confirmação recebida
+
+== Validação da Direção ==
+Coord -> UI: Consulta validações pendentes
+UI -> API: GET /sessoes?estado=pronto_validar
+API -> DB: Consulta sessões
+DB --> API: lista
+API --> UI: lista
+UI --> Coord: Apresenta lista
+Coord -> UI: "Seleciona sessão, clica Validar"
+UI -> API: POST /sessoes/{id}/validar
+API -> DB: Atualiza estado='concluida'
+API -> DB: Marca sessão para faturação mensal (ex: insere em tabela de faturação pendente)
+DB --> API: concluído
+API --> UI: OK
+UI --> Coord: Validação com sucesso
+@enduml
+
+_____________________________________________________________________
+
+Marcação da aula ---------------------------------------------------
+
+
+@startuml
+actor "Aluno/EE" as Enc
+participant "Interface Web" as UI
+participant "API Backend" as API
+participant "Base de Dados" as DB
+participant "Serviço de Notificações" as Notif
+
+Enc -> UI: Acede à página de marcação
+UI -> API: GET /horarios-disponiveis?data=&modalidade=&formato=
+note right of API: Consulta disponibilidade combinada:\nprofessores que leccionam a modalidade,\nestúdios compatíveis, horários livres
+API -> DB: Consulta professores que podem leccionar a modalidade
+DB --> API: Lista de professores
+loop para cada professor
+  API -> DB: Consulta disponibilidade do professor
+  DB --> API: Horários do professor
+  API -> DB: Verifica disponibilidade de estúdios compatíveis
+  DB --> API: Estúdios disponíveis
+end
+API --> UI: JSON com horários (inclui professor, estúdio, hora)
+UI --> Enc: Apresenta horários disponíveis
+
+Enc -> UI: Seleciona horário, submete pedido
+UI -> API: POST /pedidos { dados }   ' inclui professor, estúdio, modalidade, formato, alunos
+API -> DB: Cria pedido (estado='pendente')
+DB --> API: Pedido criado
+API -> Notif: Envia notificação aos coordenadores
+API --> UI: 201 Criado
+UI --> Enc: Mensagem de confirmação
+@enduml
+___________________________________________________________________
+Confirmação da marcação ------------------------------------------
+@startuml
+actor "Direção" as Coord
+participant "Interface Web" as UI
+participant "API Backend" as API
+participant "Base de Dados" as DB
+participant "Serviço de Notificações" as Notif
+
+Coord -> UI: Acede a pedidos de marcação pendentes
+UI -> API: GET /pedidos?estado=pendente
+API -> DB: Consulta pedidos de aula pendentes
+DB --> API: Lista de pedidos
+API --> UI: Lista
+UI --> Coord: Exibe pedidos com detalhes (aluno, modalidade, data, professor...)
+
+Coord -> UI: Seleciona pedido, clica "Aprovar" ou "Rejeitar"
+UI -> API: POST /pedidos/{id}/aprovar   (ou /rejeitar)
+API -> DB: Atualiza estado do pedido para 'aprovado' (ou 'rejeitado')
+alt aprovado
+    API -> DB: Cria sessão com estado='agendada', dados do pedido
+    DB --> API: Sessão criada
+    API -> Notif: Notifica encarregado da aprovação
+else rejeitado
+    API -> Notif: Notifica encarregado da rejeição (com motivo)
+end
+API --> UI: OK
+UI --> Coord: Confirmação
+@enduml
+_____________________________________________________________________
+
+Faturação mensal ------------------------------------------------
+
+@startuml
+actor "Direção" as Dir
+participant "API Backend\nControlador Faturação" as API
+participant "Base de Dados" as DB
+participant "Gerador de Excel" as Excel
+participant "Armazenamento de Ficheiros" as File
+participant "Serviço de Notificações" as Email
+
+Dir -> API: Aciona faturação mensal
+API -> DB: Consulta sessões concluídas do último mês (estado='concluida', faturada=false)
+DB --> API: Lista de sessões
+
+group Agrupar por encarregado
+    API -> API: Agrupa sessões por id_encarregado
+    loop para cada grupo (encarregado)
+        API -> API: Calcula valor total (somando preço de cada sessão)
+        API -> DB: Cria registo de fatura (mes, ano, valor_total, id_utilizador)
+        DB --> API: Fatura criada
+        loop para cada sessão do grupo
+            API -> DB: Atualiza sessão com id_fatura e marca faturada=true
+        end
+        API -> Excel: Gera ficheiro Excel com detalhes das sessões do encarregado
+        Excel --> API: Ficheiro Excel (array de bytes)
+        API -> File: Guarda ficheiro Excel (nome único)
+        File --> API: caminho/url do ficheiro
+        API -> Email: Envia email para o encarregado com link da fatura
+    end
+end
+
+API -> Dir: Notifica direção que faturação mensal foi concluída
+@enduml
+
+__________________________________________________________________
+
+Contribuição -----------------------------------------------------
+
+@startuml
+actor "Membro da Comunidade" as Membro
+actor "Direção" as Dir
+participant "Interface Web" as UI
+participant "API Backend" as API
+participant "Base de Dados" as DB
+
+Membro -> UI: Acede à página de contribuição
+UI -> API: GET /contribuir/formulario
+API --> UI: Devolve formulário
+UI --> Membro: Apresenta formulário
+
+Membro -> UI: Preenche dados (nome, descrição, categoria, foto) e submete
+UI -> API: POST /inventario/contribuicoes { dados }
+API -> DB: Cria Item (estado='pendente', disponivel=false)
+DB --> API: Item criado
+API -> Dir: Notifica Direção sobre novo pedido
+API --> UI: 202 Aceite
+UI --> Membro: Mensagem "Pedido enviado para validação"
+
+== Validação pela Direção ==
+Dir -> UI: Acede à lista de pedidos pendentes
+UI -> API: GET /inventario/itens?estado=pendente
+API -> DB: Consulta itens pendentes
+DB --> API: Lista de itens
+API --> UI: Lista de itens
+UI --> Dir: Exibe itens com detalhes
+
+Dir -> UI: Seleciona um item, clica "Aprovar"
+UI -> API: POST /inventario/itens/{id}/aprovar
+API -> DB: Atualiza estado='aprovado' e disponivel=true
+DB --> API: Item atualizado
+API -> Membro: Notifica membro que a contribuição foi aprovada
+API --> UI: OK
+UI --> Dir: Confirmação de aprovação
+
+Membro -> UI: Visualiza inventário
+UI -> API: GET /inventario/itens?disponivel=true
+API -> DB: Consulta itens disponíveis (aprovados e não emprestados)
+DB --> API: Lista de itens
+API --> UI: Itens (incluindo o novo)
+UI --> Membro: Inventário atualizado
+@enduml
+_______________________________________________________________
+
+Empréstimo de um item------------------------------------------
+
+@startuml
+actor "Membro da Comunidade" as Membro
+actor "Direcão" as Dir 
+participant "Interface Web" as UI
+participant "API Backend" as API
+participant "Base de Dados" as DB
+participant "Serviço de Notificações" as Notif
+
+== Pesquisa e Pedido de Empréstimo ==
+Membro -> UI: Acede ao inventário
+UI -> API: GET /inventario/itens?disponivel=true&categoria=
+API -> DB: Consulta itens disponíveis
+DB --> API: Lista de itens
+API --> UI: Itens disponíveis
+UI --> Membro: Exibe lista
+
+Membro -> UI: Seleciona um item, clica "Solicitar empréstimo"
+UI -> API: POST /emprestimos/pedidos { itemId, observações }
+API -> DB: Cria pedido de empréstimo (estado='pendente')
+DB --> API: Pedido criado
+API -> Notif: Notifica Direção
+API --> UI: 202 Aceite
+UI --> Membro: Mensagem "Pedido enviado para validação"
+
+== Validação pela Direção ==
+Dir -> UI: Acede a pedidos de empréstimo pendentes
+UI -> API: GET /emprestimos/pedidos?estado=pendente
+API -> DB: Consulta pedidos pendentes
+UI --> Dir: Exibe pedidos
+
+Dir -> UI: Seleciona pedido, define taxa, aprova ou rejeita
+UI -> API: POST /emprestimos/pedidos/{id}/(aprovar/rejeitar) { taxa }
+alt aprovar
+    API -> DB: Altera estado do pedido para 'aprovado'
+    API -> DB: Regista empréstimo com data_inicio = hoje
+    API -> DB: Altera estado do item para 'emprestado'
+    DB --> API: Empréstimo registado
+    API -> Notif: Notifica membro da aprovação
+else rejeitar
+    API -> DB: Altera estado do pedido para 'rejeitado'
+    API -> Notif: Notifica membro da rejeição
+end
+
+== Devolução ==
+Membro -> UI: Acede à área "Os meus empréstimos"
+UI -> API: GET /emprestimos/membros/{id}
+API -> DB: Consulta empréstimos ativos do membro
+UI --> Membro: Exibe empréstimos
+
+Membro -> UI: Seleciona o item devolvido, clica "Devolver"
+UI -> API: POST /emprestimos/{id}/devolver
+API -> DB: Regista data de devoluçao
+API -> DB: Altera estado do item para 'disponível'
+API -> DB: Altera estado do empréstimo para 'devolvido'
+DB --> API: Atualizado
+API -> Notif: Notifica Direção da devoluçao
+API --> UI: OK
+UI --> Membro: Confirmaçao da devoluçao
+@enduml
+_________________________________________________________________________
+
+BPMB ==========================================================================
+
+Reserva de aula--------------------------------------------
+
+@startuml
+|Encarregado de Educação|
+
+start
+
+:Visualizar horários disponíveis;
+
+:Selecionar modalidade, formato e data;
+
+:Escolher horário disponível;
+
+:Submeter pedido de aula;
+
+|Coordenação / Direção|
+
+:Receber pedido de marcação;
+
+if (Horário disponível?) then (Sim)
+
+:Validar pedido;
+
+:Confirmar reserva de estúdio e professor;
+
+|Encarregado de Educação|
+
+:Receber confirmação da aula;
+
+stop
+
+else (Não)
+
+:Rejeitar pedido;
+
+|Encarregado de Educação|
+
+:Receber notificação de rejeição;
+
+stop
+
+endif
+@enduml
+
+
+Faturação--------------------------------------------------
+@startuml
+|Encarregado de Educação|
+
+start
+
+:Confirmar conclusão da aula;
+
+|Professor|
+
+:Confirmar conclusão da aula;
+
+if (Ambos confirmaram?) then (Sim)
+
+|Coordenação / Direção|
+
+:Consultar sessões prontas para validação;
+
+:Validar conclusão da sessão;
+
+:Autorizar faturação da aula;
+
+stop
+
+else (Não)
+
+:Esperar confirmação restante (até 48h);
+
+stop
+
+endif
+@enduml
+_______________________________________________________________
+
+Submissão de pedido-------------------------------------
+
+@startuml
+|Comunidade Escolar|
+
+start
+
+:Identificar peça (figurino, acessório ou cenário);
+
+:Submeter informação do item;
+
+|Coordenação / Direção|
+
+:Receber proposta de novo item;
+
+if (Item válido?) then (Sim)
+
+:Adicionar item ao inventário digital;
+
+:Definir categoria e estado;
+
+|Comunidade Escolar|
+
+:Visualizar item disponível no inventário;
+
+stop
+
+else (Não)
+
+:Rejeitar submissão;
+
+|Comunidade Escolar|
+
+:Receber notificação de rejeição;
+
+stop
+
+endif
+@enduml
+
+___________________________
+
+empréstimo do pedido---------------------------------------------
+@startuml
+|Aluno / Encarregado|
+
+start
+
+:Pesquisar item no inventário;
+
+:Selecionar figurino/acessório;
+
+:Submeter pedido de utilização;
+
+|Coordenação / Direção|
+
+:Receber pedido;
+
+if (Item disponível?) then (Sim)
+
+:Autorizar utilização;
+
+:Definir taxa simbólica;
+
+|Aluno / Encarregado|
+
+:Receber confirmação de utilização;
+
+stop
+
+else (Não)
+
+:Rejeitar pedido;
+
+|Aluno / Encarregado|
+
+:Receber notificação de indisponibilidade;
+
+stop
+
+endif
+@enduml
+________________________________________________________________________
+Diagrama de classes ====================================================
+
+@startuml
+skinparam linetype ortho
+skinparam defaultTextAlignment center
+skinparam ranksep 100
+skinparam nodesep 100
+
+' Enums
+enum TipoUtilizador {
+  DIRECAO
+  PROFESSOR
+  ENCARREGADO
+}
+
+enum EstadoSessao {
+  PENDENTE
+  AGENDADA         
+  PRONTO_VALIDAR
+  CONCLUIDA
+  REJEITADA         
+}
+
+enum EstadoEmprestimo {
+  PENDENTE
+  APROVADO
+  DEVOLVIDO
+  REJEITADO        
+}
+
+enum EstadoItem {
+  PENDENTE
+  APROVADO
+  REJEITADO
+}
+
+enum FormatoAula {
+  INDIVIDUAL
+  DUETO
+  TRIO
+  ENSEMBLE
+}
+
+' Classes principais em ordem agrupada
+class Utilizador {
+  - id: int
+  - nome: string
+  - email: string
+  - senha: string
+  - tipo: TipoUtilizador
+  + login(email, senha): boolean
+  + notificar(mensagem): void
+}
+
+class Aluno {
+  - id: int
+  - nome: string
+  + getEncarregado(): Utilizador
+}
+
+class ProfessorModalidade {   
+  - professor: Utilizador
+  - modalidade: Modalidade
+}
+
+class DisponibilidadeProfessor {
+  - id: int
+  - diaSemana: int
+  - horaInicio: Time
+  - horaFim: Time
+  - recorrente: boolean
+  + verificarConflito(data, hora): boolean
+}
+
+class Sessao {
+  - id: int
+  - dataHoraInicio: datetime
+  - dataHoraFim: datetime
+  - estado: EstadoSessao
+  - formato: FormatoAula
+  - encConfirmado: boolean
+  - profConfirmado: boolean
+  - preco: float            
+  + confirmarEnc(): void
+  + confirmarProf(): void
+  + validar(): void
+  + adicionarParticipante(aluno): void
+}
+
+class Participante {
+  - sessao: Sessao
+  - aluno: Aluno
+}
+
+class Estudio {
+  - id: int
+  - nome: string
+  - capacidade: int
+  - descricao: string
+  + verificarDisponibilidade(data, hora): boolean
+}
+
+class Modalidade {
+  - id: int
+  - nome: string
+  - descricao: string
+}
+
+class EstudioModalidade {
+  - estudio: Estudio
+  - modalidade: Modalidade
+}
+
+class Item {
+  - id: int
+  - nome: string
+  - descricao: string
+  - categoria: string
+  - estadoConservacao: string
+  - fotoUrl: string
+  - estado: EstadoItem
+  - disponivel: boolean
+  - taxaSimbolica: float
+  + emprestar(utilizador, dataPrevista): Emprestimo
+  + devolver(): void
+}
+
+class Emprestimo {
+  - id: int
+  - dataInicio: date
+  - dataFimPrevisto: date
+  - dataDevolucao: date
+  - estado: EstadoEmprestimo
+  - taxaAplicada: float
+  + aprovar(taxa): void
+  + devolver(): void
+}
+
+class Fatura {
+  - id: int
+  - mes: int
+  - ano: int
+  - dataEmissao: date
+  - valorTotal: float
+  - paga: boolean
+  + gerarPDF(): File
+  + gerarExcel(): File
+}
+
+' Relacionamentos
+Utilizador "1" -- "0..*" Aluno : "encarregado de"
+Utilizador "1" -- "0..*" Sessao : "lecciona como professor"
+Utilizador "1" -- "0..*" DisponibilidadeProfessor : "define"
+Utilizador "1" -- "0..*" Item : "contribuiu"
+Utilizador "1" -- "0..*" Emprestimo : "requisitou"
+Utilizador "1" -- "0..*" Fatura : "recebe"
+
+Estudio "1" -- "0..*" Sessao : "utilizado em"
+Modalidade "1" -- "0..*" Sessao : "modalidade da"
+
+Estudio "*" -- "*" Modalidade : "compatível com" <@> EstudioModalidade
+Utilizador "*" -- "*" Modalidade : "pode leccionar" <@> ProfessorModalidade
+
+Sessao "1" -- "0..*" Participante : "inclui"
+Aluno "1" -- "0..*" Participante : "participa em"
+
+Item "1" -- "0..*" Emprestimo : "solicitado em"
+Fatura "1" -- "0..*" Sessao : "agrupa"
+@enduml
+______________________________________________________________________________
+
+Diagrama ER (Entity-relationship) =====================================================
+
+@startuml
+skinparam linetype ortho
+skinparam defaultTextAlignment center
+skinparam ranksep 100
+skinparam nodesep 100
+
+' Entidades
+entity Utilizador {
+  *id : number <<gerado>>
+  --
+  nome : string
+  email : string
+  senha : string
+  tipo : string   // 'direção', 'professor', 'encarregado'
+}
+
+entity Aluno {
+  *id : number <<gerado>>
+  --
+  nome : string
+  id_encarregado : number <<FK>>
+}
+
+entity Estudio {
+  *id : number <<gerado>>
+  --
+  nome : string
+  capacidade : number
+  descricao : string
+}
+
+entity Modalidade {
+  *id : number <<gerado>>
+  --
+  nome : string
+  descricao : string
+}
+
+entity EstudioModalidade {
+  *id_estudio : number <<FK>>
+  *id_modalidade : number <<FK>>
+}
+
+entity ProfessorModalidade {  
+  *id_professor : number <<FK>>
+  *id_modalidade : number <<FK>>
+}
+
+entity Sessao {
+  *id : number <<gerado>>
+  --
+  data_hora_inicio : datetime
+  data_hora_fim : datetime
+  estado : string        // 'pendente', 'agendada', 'pronto_validar', 'concluída', 'rejeitada'
+  enc_confirmado : boolean
+  prof_confirmado : boolean
+  preco : float         
+  id_estudio : number <<FK>>
+  id_professor : number <<FK>>
+  id_modalidade : number <<FK>>
+  id_fatura : number <<FK>>  // pode ser nulo
+}
+
+entity Participante {
+  *id_sessao : number <<FK>>
+  *id_aluno : number <<FK>>
+}
+
+entity Item {
+  *id : number <<gerado>>
+  --
+  nome : string
+  descricao : string
+  categoria : string
+  estado_conservacao : string
+  foto_url : string
+  disponivel : boolean
+  taxa_simbolica : number
+  id_contribuidor : number <<FK>>  // Utilizador que ofereceu o item
+}
+
+entity Emprestimo {
+  *id : number <<gerado>>
+  --
+  data_inicio : date      ' <-- now always set on approval
+  data_fim_previsto : date
+  data_devolucao : date   // nulo enquanto não devolvido
+  estado : string         // 'pendente', 'aprovado', 'devolvido', 'rejeitado'
+  taxa_aplicada : number
+  id_item : number <<FK>>
+  id_utilizador : number <<FK>>   // requisitante
+}
+
+entity Fatura {
+  *id : number <<gerado>>
+  --
+  mes : number
+  ano : number
+  data_emissao : date
+  valor_total : number
+  id_utilizador : number <<FK>>   // encarregado destinatário
+}
+
+' Relacionamentos
+Utilizador ||--o{ Aluno : "é encarregado de"
+Utilizador ||--o{ Sessao : "lecciona como professor"
+Utilizador ||--o{ Item : "contribuiu"
+Utilizador ||--o{ Emprestimo : "requisitou"
+Utilizador ||--o{ Fatura : "recebe"
+
+Estudio ||--o{ Sessao : "utilizado em"
+Modalidade ||--o{ Sessao : "é a modalidade de"
+Estudio }o--o{ Modalidade : "compatível com" << through EstudioModalidade >>
+Utilizador }o--o{ Modalidade : "pode leccionar" << through ProfessorModalidade >>  
+
+Sessao ||--o{ Participante : "inclui"
+Aluno ||--o{ Participante : "participa em"
+
+Item ||--o{ Emprestimo : "é solicitado em"
+
+Fatura ||--o{ Sessao : "agrupa"
+@enduml
+________________________________________________________________________________
+
+Diagrama de componentes ===========================================
+
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam defaultTextAlignment center
+
+package "Frontend (Web)" as frontend {
+  component "Interface de Utilizador" as UI <<React / Vue>>
+  note right of UI : Acessível via browser\n(PC, tablet, smartphone)
+}
+
+package "Backend" as backend {
+  component "API REST" as API <<Node.js / .NET / Django>>
+  note right of API : Expõe endpoints\n REST
+
+  component "Controlador de Acesso" as Auth <<autenticação>>
+  
+  package "Módulos de Negócio" as modules {
+    component "Gestão de Coachings" as Coaching
+    component "Gestão de Inventário" as Inventory
+    component "Serviço de Faturação" as Billing
+    component "Serviço de Notificações" as Notif
+  }
+}
+
+package "Armazenamento" as storage {
+  database "Base de Dados" as DB <<SQL>>
+  note left of DB : Tabelas: Utilizador, Aluno,\nEstúdio, Modalidade, Sessão,\nParticipante, Item, Empréstimo,\nFatura
+
+  component "Armazenamento de Ficheiros" as FileStorage <<S3 / Local>>
+  note left of FileStorage : Imagens dos itens,\nrelatórios Excel
+}
+
+package "Sistemas Externos" as external {
+  component "Serviço de Email" as Email <<SMTP / SendGrid>>
+  note left of Email : Envio de confirmações,\nnotificações de validação,\nlembretes
+}
+
+' Ligações principais
+UI --> API : chamadas REST
+API --> DB : consultas SQL
+API --> FileStorage : upload/download
+API --> Email : envio de emails
+
+' Ligações internas da API
+API ..> Auth : valida credenciais
+API ..> Coaching : delega pedidos de\nmarcação, confirmação
+API ..> Inventory : delega gestão de itens,\nempréstimos, devoluções
+API ..> Billing : delega cálculo e\ngeração de faturas
+API ..> Notif : delega envio de\nnotificações
+
+@enduml
+_________________________________________________________________
+
+Diagrama de objetos =============================================
+Marcação de aulas-----------------------------------------------
+
+@startuml
+skinparam linetype ortho
+skinparam defaultTextAlignment center
+skinparam nodesep 120
+skinparam ranksep 120
+
+object "carla: Utilizador" as enc {
+  id = 107
+  nome = "Carla Gomes"
+  email = "carla.gomes@email.com"
+  tipo = "encarregado"
+}
+
+object "rita: Aluno" as aluno {
+  id = 203
+  nome = "Rita Gomes"
+  id_encarregado = 107
+}
+
+object "pedro: Utilizador" as prof {
+  id = 108
+  nome = "Pedro Santos"
+  email = "pedro.santos@entartes.pt"
+  tipo = "professor"
+}
+
+object "disp: DisponibilidadeProfessor" as disp {
+  id = 901
+  id_professor = 108
+  dia_semana = 2
+  hora_inicio = "14:00"
+  hora_fim = "18:00"
+  recorrente = true
+}
+
+object "estudio2: Estudio" as estudio {
+  id = 302
+  nome = "Estúdio 2"
+  capacidade = 8
+}
+
+object "classica: Modalidade" as mod {
+  id = 402
+  nome = "Ballet Clássico"
+}
+
+object "sessao: Sessao" as sessao {
+  id = 504
+  data_hora_inicio = "2026-03-25 16:00"
+  data_hora_fim = "2026-03-25 17:00"
+  estado = "pendente"
+  formato = "individual"
+  enc_confirmado = false
+  prof_confirmado = false
+  id_estudio = 302
+  id_professor = 108
+  id_modalidade = 402
+  id_fatura = null
+}
+
+object "part: Participante" as part {
+  id_sessao = 504
+  id_aluno = 203
+}
+
+' Relacionamentos
+enc --> aluno : "é encarregado de"
+prof --> disp : "define"
+prof --> sessao : "lecciona"
+estudio --> sessao : "utilizado em"
+mod --> sessao : "é a modalidade de"
+sessao --> part : "inclui"
+part --> aluno : "participa em"
+@enduml
+___________________________________________________
+Inventário------------------------------------------
+
+@startuml
+skinparam linetype ortho
+skinparam defaultTextAlignment center
+skinparam nodesep 120
+skinparam ranksep 120
+
+' Top row: users
+object "maria: Utilizador" as contribuidora {
+  id = 110
+  nome = "Maria Silva"
+  email = "maria.silva@email.com"
+  tipo = "encarregado"
+}
+
+object "ana: Utilizador" as diretora {
+  id = 101
+  nome = "Ana Costa"
+  email = "ana.costa@entartes.pt"
+  tipo = "direcao"
+}
+
+object "carlos: Utilizador" as requisitante {
+  id = 115
+  nome = "Carlos Pereira"
+  email = "carlos.pereira@email.com"
+  tipo = "encarregado"
+}
+
+' Middle row: one item
+object "tutu: Item" as item {
+  id = 301
+  nome = "Tutu Rosa"
+  descricao = "Tutu de balé clássico, tamanho infantil"
+  categoria = "Figurino"
+  estado_conservacao = "Bom"
+  foto_url = "/imagens/tutu_rosa.jpg"
+  disponivel = false
+  taxa_simbolica = 5.0
+  estado = "aprovado"
+  id_contribuidor = 110
+}
+
+' Bottom row: one loan
+object "pedido: Emprestimo" as emprestimo {
+  id = 501
+  data_inicio = "2026-03-10"
+  data_fim_previsto = "2026-03-24"
+  data_devolucao = null
+  estado = "aprovado"
+  taxa_aplicada = 5.0
+  id_item = 301
+  id_utilizador = 115
+}
+
+' Relacionamentos - simplified with one item and one loan
+contribuidora --> item : "contribuiu"
+
+requisitante --> emprestimo : "requisitou"
+
+diretora --> item : "aprovou"
+diretora --> emprestimo : "aprovou"
+
+item --> emprestimo : "solicitado em"
+
+@enduml
