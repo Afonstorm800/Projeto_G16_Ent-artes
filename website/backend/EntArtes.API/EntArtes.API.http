@@ -1,0 +1,6 @@
+@EntArtes.API_HostAddress = http://localhost:5063
+
+GET {{EntArtes.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

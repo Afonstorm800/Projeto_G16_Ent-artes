@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="EntArtes.API/EntArtes.API.csproj" />
+  <Project Path="EntArtes.Core/EntArtes.Core.csproj" />
+  <Project Path="EntArtes.Infrastructure/EntArtes.Infrastructure.csproj" />
+</Solution>
