@@ -9,6 +9,8 @@ C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Azure.Core.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Azure.Identity.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\BCrypt.Net-Next.dll
+C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\EPPlus.dll
+C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\EPPlus.Interfaces.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Humanizer.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.AspNetCore.OpenApi.dll
@@ -36,6 +38,7 @@ C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.IdentityModel.Tokens.dll
+C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.IO.RecyclableMemoryStream.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.OpenApi.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.SqlServer.Server.dll
 C:\Users\Afonso Almeida\source\repos\Afonstorm800\Projeto_G16_Ent-artes\website\backend\EntArtes.API\bin\Debug\net10.0\Microsoft.VisualStudio.SolutionPersistence.dll

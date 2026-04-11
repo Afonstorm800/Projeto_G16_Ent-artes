@@ -1,9 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using EntArtes.API.DTOs;
 using EntArtes.API.Services;
 using EntArtes.Core.Entities;
 using EntArtes.Infrastructure.Data;
+using EntArtes.API.DTOs;
 
 namespace EntArtes.API.Controllers;
 
